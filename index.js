@@ -8,24 +8,9 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// ===== НАСТРОЙКИ ДЛЯ MUZAL.NET =====
 const BASE_URL = 'https://muzal.net';
-const SEARCH_URL = '/search'; // или '/search.html', уточните
-const SEARCH_PARAM = 'q'; // или 'query', 'search_query'
 
-// Селекторы (замените на реальные после осмотра сайта)
-const SELECTORS = {
-    trackContainer: '.track-item', // контейнер трека в результатах поиска
-    title: '.track-title',         // селектор названия
-    artist: '.track-artist',       // селектор исполнителя
-    link: 'a',                     // ссылка на страницу трека (relative href)
-    cover: '.track-cover img',     // обложка (опционально)
-    // Для страницы трека:
-    audioSrc: 'audio source',      // селектор для <source> внутри <audio>
-    downloadLink: '.download-btn', // или прямая ссылка на MP3
-};
-
-// ===== ПОИСК =====
+// Эндпоинт поиска
 app.get('/search', async (req, res) => {
     const { query } = req.query;
     if (!query) return res.status(400).json({ error: 'Missing query' });
@@ -34,7 +19,7 @@ app.get('/search', async (req, res) => {
 
     try {
         // 1. Загружаем страницу поиска
-        const searchUrl = `${BASE_URL}${SEARCH_URL}?${SEARCH_PARAM}=${encodeURIComponent(query)}`;
+        const searchUrl = `${BASE_URL}/query?q=${encodeURIComponent(query)}`;
         console.log(`📡 Запрос к: ${searchUrl}`);
 
         const response = await axios.get(searchUrl, {
@@ -51,7 +36,7 @@ app.get('/search', async (req, res) => {
         const $ = cheerio.load(html);
 
         // Ищем контейнеры треков
-        const trackElements = $(SELECTORS.trackContainer);
+        const trackElements = $('.t-item');
         console.log(`📀 Найдено элементов: ${trackElements.length}`);
 
         if (trackElements.length === 0) {
@@ -60,17 +45,19 @@ app.get('/search', async (req, res) => {
 
         const tracks = [];
         trackElements.each((index, element) => {
-            const title = $(element).find(SELECTORS.title).text().trim();
-            const artist = $(element).find(SELECTORS.artist).text().trim();
-            const link = $(element).find(SELECTORS.link).attr('href');
-            const cover = $(element).find(SELECTORS.cover).attr('src') || '';
+            const title = $(element).find('.t-name a').first().text().trim();
+            const artist = $(element).find('.t-title a').first().text().trim();
+            const trackUrl = $(element).find('.t-name a').first().attr('href');
+            const cover = $(element).find('img.t-img').attr('src');
+            const duration = $(element).find('.t-dur').text().trim();
 
-            if (link) {
+            if (trackUrl) {
                 tracks.push({
                     title: title || 'Без названия',
                     artist: artist || 'Неизвестен',
-                    cover: cover,
-                    trackUrl: link.startsWith('http') ? link : `${BASE_URL}${link}`,
+                    cover: cover ? `${BASE_URL}${cover}` : '',
+                    trackUrl: trackUrl.startsWith('http') ? trackUrl : `${BASE_URL}${trackUrl}`,
+                    duration: duration,
                 });
             }
         });
@@ -87,40 +74,48 @@ app.get('/search', async (req, res) => {
                 });
                 const $track = cheerio.load(trackPageHtml.data);
 
-                // Ищем аудио-ссылку
+                // Ищем ссылку на скачивание
                 let mp3 = null;
 
-                // Вариант 1: через <audio> <source>
-                const audioSource = $track(SELECTORS.audioSrc);
-                if (audioSource.length) {
-                    mp3 = audioSource.attr('src');
-                }
-
-                // Вариант 2: через кнопку скачивания
-                if (!mp3) {
-                    const downloadLink = $track(SELECTORS.downloadLink);
-                    if (downloadLink.length) {
-                        mp3 = downloadLink.attr('href');
+                // Вариант 1: кнопка с классом bd и href, содержащим .mp3 или /download/
+                const downloadLink = $track('a.bd[href]').first();
+                if (downloadLink.length) {
+                    const href = downloadLink.attr('href');
+                    if (href && (href.includes('.mp3') || href.includes('/download/'))) {
+                        mp3 = href.startsWith('http') ? href : `${BASE_URL}${href}`;
                     }
                 }
 
-                // Вариант 3: прямая ссылка в тексте или в data-атрибуте
+                // Вариант 2: ищем аудио тег
                 if (!mp3) {
-                    // Можно поискать любой элемент с атрибутом data-mp3 или подобным
-                    // Например: $track('[data-mp3]').attr('data-mp3')
+                    const audioSource = $track('audio source[src]').first();
+                    if (audioSource.length) {
+                        mp3 = audioSource.attr('src');
+                        if (mp3 && !mp3.startsWith('http')) {
+                            mp3 = `${BASE_URL}${mp3}`;
+                        }
+                    }
+                }
+
+                // Вариант 3: ищем любой элемент с data-mp3 или data-url
+                if (!mp3) {
+                    const dataElement = $track('[data-mp3], [data-url]').first();
+                    if (dataElement.length) {
+                        mp3 = dataElement.attr('data-mp3') || dataElement.attr('data-url');
+                        if (mp3 && !mp3.startsWith('http')) {
+                            mp3 = `${BASE_URL}${mp3}`;
+                        }
+                    }
                 }
 
                 if (mp3) {
-                    // Если ссылка относительная, делаем абсолютной
-                    if (mp3.startsWith('/')) {
-                        mp3 = `${BASE_URL}${mp3}`;
-                    }
                     tracksWithMp3.push({
                         id: track.trackUrl,
                         title: track.title,
                         artist: track.artist,
                         cover: track.cover,
                         mp3: mp3,
+                        duration: track.duration,
                     });
                 } else {
                     console.warn(`⚠️ Не удалось найти MP3 для ${track.title}`);
