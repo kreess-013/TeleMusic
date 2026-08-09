@@ -1,7 +1,7 @@
 {
-  "name": "zaycev-parser",
+  "name": "muzal-parser",
   "version": "1.0.0",
-  "description": "Парсинг Zaycev.net через бэкенд",
+  "description": "Парсинг muzal.net",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
