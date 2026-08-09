@@ -9,9 +9,52 @@ app.use(cors());
 app.use(express.json());
 
 const BASE_URL = 'https://z3.fm';
+const USER_AGENTS = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+];
 
-// Парсинг страницы поиска или списка треков
-function parseSongs(html) {
+// Полный набор заголовков браузера
+function getHeaders() {
+    return {
+        'User-Agent': USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)],
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Referer': 'https://z3.fm/',
+        'Pragma': 'no-cache',
+    };
+}
+
+// Функция запроса с повторными попытками
+async function fetchWithRetry(url, retries = 3) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            const response = await axios.get(url, {
+                headers: getHeaders(),
+                timeout: 15000,
+                // Не сжимаем ответ вручную (axios сам распакует)
+            });
+            return response;
+        } catch (err) {
+            console.log(`⚠️ Попытка ${i + 1} не удалась: ${err.message}`);
+            if (i === retries - 1) throw err;
+            // Пауза перед повторной попыткой
+            await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+        }
+    }
+}
+
+// Парсинг списка треков
+async function parseSongs(html) {
     const $ = cheerio.load(html);
     const tracks = [];
 
@@ -42,48 +85,6 @@ function parseSongs(html) {
     return tracks;
 }
 
-// Парсинг страницы конкретного трека
-function parseTrackPage(html) {
-    const $ = cheerio.load(html);
-    const track = {};
-
-    // Извлекаем ID из URL или из data-атрибутов
-    const sid = $('.song-play').attr('data-sid') || 
-                $('.btn-xlarge.song-play').attr('data-sid') || 
-                $('[data-sid]').first().attr('data-sid');
-
-    const dataUrl = $('.song-play').attr('data-url') || 
-                    $('.btn-xlarge.song-play').attr('data-url') ||
-                    $('[data-url]').first().attr('data-url');
-
-    // Название и исполнитель
-    const titleEl = $('h1').first();
-    const artistEl = $('h2.before_h1').first();
-    const title = titleEl.text().trim();
-    const artist = artistEl.text().trim();
-
-    // Длительность, размер, битрейт
-    const duration = $('.sb_item .icon-time').parent().find('b').text().trim();
-    const size = $('.sb_item .icon-size').parent().find('b').text().trim();
-    const bitrate = $('.sb_item .icon-bitrate').parent().find('b').text().trim();
-
-    // Обложка (может быть)
-    const cover = $('meta[property="og:image"]').attr('content') || '';
-
-    if (sid && dataUrl) {
-        track.id = sid;
-        track.title = title || 'Unknown';
-        track.artist = artist || 'Unknown';
-        track.duration = duration || '0:00';
-        track.size = size || '';
-        track.bitrate = bitrate || '';
-        track.mp3 = dataUrl.startsWith('http') ? dataUrl : `${BASE_URL}${dataUrl}`;
-        track.cover = cover;
-    }
-
-    return track;
-}
-
 // Поиск
 app.get('/search', async (req, res) => {
     const { query } = req.query;
@@ -91,59 +92,68 @@ app.get('/search', async (req, res) => {
 
     try {
         const searchUrl = `${BASE_URL}/mp3/search?keywords=${encodeURIComponent(query)}`;
-        const response = await axios.get(searchUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Referer': BASE_URL,
-            },
-            timeout: 15000,
-        });
-        const tracks = parseSongs(response.data);
+        const response = await fetchWithRetry(searchUrl);
+        const tracks = await parseSongs(response.data);
         res.json({ tracks });
     } catch (err) {
         console.error(err);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// Получение информации о треке по ID
-app.get('/track/:id', async (req, res) => {
-    const { id } = req.params;
-    if (!id) return res.status(400).json({ error: 'Missing track id' });
-
-    try {
-        const trackUrl = `${BASE_URL}/song/${id}`;
-        const response = await axios.get(trackUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Referer': BASE_URL,
-            },
-            timeout: 15000,
-        });
-        const track = parseTrackPage(response.data);
-        if (track && track.id) {
-            res.json({ track });
-        } else {
-            res.status(404).json({ error: 'Track not found' });
+        // Если z3.fm блокирует, предлагаем использовать прокси
+        if (err.response && err.response.status === 403) {
+            return res.status(403).json({
+                error: 'Сайт z3.fm блокирует запросы с вашего IP. Попробуйте позже или используйте другой источник.',
+            });
         }
-    } catch (err) {
-        console.error(err);
         res.status(500).json({ error: err.message });
     }
 });
 
-// Популярные (главная)
+// Популярные
 app.get('/popular', async (req, res) => {
     try {
-        const response = await axios.get(BASE_URL, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Referer': BASE_URL,
-            },
-            timeout: 15000,
-        });
-        const tracks = parseSongs(response.data);
+        const response = await fetchWithRetry(BASE_URL);
+        const tracks = await parseSongs(response.data);
         res.json({ tracks });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Получение информации о треке (по ID)
+app.get('/track/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const url = `${BASE_URL}/song/${id}`;
+        const response = await fetchWithRetry(url);
+        const $ = cheerio.load(response.data);
+
+        const title = $('h1').first().text().trim();
+        const artist = $('.title_box h1').first().text().trim() || 'Unknown';
+        const duration = $('.sb_item .icon-time').parent().find('b').text().trim() || '0:00';
+        const size = $('.sb_item .icon-size').parent().find('b').text().trim() || '0';
+        const bitrate = $('.sb_item .icon-bitrate').parent().find('b').text().trim() || '0';
+        const cover = $('meta[property="og:image"]').attr('content') || '';
+
+        // Ссылка на скачивание (data-url)
+        const downloadBtn = $('[data-sid="' + id + '"]').first();
+        let mp3 = '';
+        if (downloadBtn.length) {
+            mp3 = downloadBtn.attr('data-url');
+            if (mp3 && !mp3.startsWith('http')) {
+                mp3 = `${BASE_URL}${mp3}`;
+            }
+        }
+
+        res.json({
+            id,
+            title,
+            artist,
+            duration,
+            size,
+            bitrate,
+            cover: cover || '',
+            mp3: mp3 || '',
+        });
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: err.message });
@@ -156,10 +166,7 @@ app.get('/proxy', async (req, res) => {
     if (!url) return res.status(400).json({ error: 'Missing url' });
     try {
         const response = await axios.get(url, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Referer': BASE_URL,
-            },
+            headers: getHeaders(),
             responseType: 'stream',
         });
         res.setHeader('Content-Type', response.headers['content-type']);
