@@ -50,9 +50,11 @@ app.get('/search', async (req, res) => {
             const trackUrl = $(element).find('.t-name a').first().attr('href');
             const cover = $(element).find('img.t-img').attr('src');
             const duration = $(element).find('.t-dur').text().trim();
+            const tid = $(element).attr('data-tid');
 
             if (trackUrl) {
                 tracks.push({
+                    tid: tid || '',
                     title: title || 'Без названия',
                     artist: artist || 'Неизвестен',
                     cover: cover ? `${BASE_URL}${cover}` : '',
@@ -64,46 +66,84 @@ app.get('/search', async (req, res) => {
 
         console.log(`📀 Собрано ${tracks.length} треков без MP3`);
 
-        // 3. Для каждого трека получаем MP3 со страницы трека
+        // 3. Для каждого трека получаем MP3
         const tracksWithMp3 = [];
         for (const track of tracks) {
             try {
-                const trackPageHtml = await axios.get(track.trackUrl, {
-                    headers: { 'User-Agent': 'Mozilla/5.0' },
-                    timeout: 5000,
-                });
-                const $track = cheerio.load(trackPageHtml.data);
-
-                // Ищем ссылку на скачивание
                 let mp3 = null;
 
-                // Вариант 1: кнопка с классом bd и href, содержащим .mp3 или /download/
-                const downloadLink = $track('a.bd[href]').first();
-                if (downloadLink.length) {
-                    const href = downloadLink.attr('href');
-                    if (href && (href.includes('.mp3') || href.includes('/download/'))) {
-                        mp3 = href.startsWith('http') ? href : `${BASE_URL}${href}`;
+                // Сначала пробуем сформировать ссылку по data-tid (работает!)
+                if (track.tid) {
+                    mp3 = `https://muzal.net/download/${track.tid}.mp3`;
+                    // Проверим, доступна ли ссылка (делаем HEAD-запрос)
+                    try {
+                        const headRes = await axios.head(mp3, { timeout: 3000 });
+                        if (headRes.status === 200) {
+                            // ссылка работает
+                        } else {
+                            mp3 = null;
+                        }
+                    } catch (e) {
+                        mp3 = null;
                     }
                 }
 
-                // Вариант 2: ищем аудио тег
+                // Если не получилось, парсим страницу трека
                 if (!mp3) {
-                    const audioSource = $track('audio source[src]').first();
-                    if (audioSource.length) {
-                        mp3 = audioSource.attr('src');
-                        if (mp3 && !mp3.startsWith('http')) {
-                            mp3 = `${BASE_URL}${mp3}`;
+                    const trackPageHtml = await axios.get(track.trackUrl, {
+                        headers: { 'User-Agent': 'Mozilla/5.0' },
+                        timeout: 5000,
+                    });
+                    const $track = cheerio.load(trackPageHtml.data);
+
+                    // Ищем ссылку на скачивание
+                    // Вариант 1: кнопка с классом btn-track-dl (href может быть пустым, но data-dl есть)
+                    const dlBtn = $track('.btn-track-dl');
+                    if (dlBtn.length) {
+                        // Проверяем атрибут href
+                        const href = dlBtn.attr('href');
+                        if (href && href.includes('.mp3')) {
+                            mp3 = href.startsWith('http') ? href : `${BASE_URL}${href}`;
+                        } else {
+                            // Если href ведёт на страницу, возможно, нужно добавить параметр
+                            // Пробуем сформировать ссылку по data-tid (если есть)
+                            const tidFromPage = $track('.track-actions').attr('data-tid');
+                            if (tidFromPage) {
+                                mp3 = `https://muzal.net/download/${tidFromPage}.mp3`;
+                            }
                         }
                     }
-                }
 
-                // Вариант 3: ищем любой элемент с data-mp3 или data-url
-                if (!mp3) {
-                    const dataElement = $track('[data-mp3], [data-url]').first();
-                    if (dataElement.length) {
-                        mp3 = dataElement.attr('data-mp3') || dataElement.attr('data-url');
-                        if (mp3 && !mp3.startsWith('http')) {
-                            mp3 = `${BASE_URL}${mp3}`;
+                    // Вариант 2: ссылка с классом bd (на странице поиска)
+                    if (!mp3) {
+                        const downloadLink = $track('a.bd[href]').first();
+                        if (downloadLink.length) {
+                            const href = downloadLink.attr('href');
+                            if (href && (href.includes('.mp3') || href.includes('/download/'))) {
+                                mp3 = href.startsWith('http') ? href : `${BASE_URL}${href}`;
+                            }
+                        }
+                    }
+
+                    // Вариант 3: аудио тег
+                    if (!mp3) {
+                        const audioSource = $track('audio source[src]').first();
+                        if (audioSource.length) {
+                            mp3 = audioSource.attr('src');
+                            if (mp3 && !mp3.startsWith('http')) {
+                                mp3 = `${BASE_URL}${mp3}`;
+                            }
+                        }
+                    }
+
+                    // Вариант 4: data-mp3 или data-url
+                    if (!mp3) {
+                        const dataElement = $track('[data-mp3], [data-url]').first();
+                        if (dataElement.length) {
+                            mp3 = dataElement.attr('data-mp3') || dataElement.attr('data-url');
+                            if (mp3 && !mp3.startsWith('http')) {
+                                mp3 = `${BASE_URL}${mp3}`;
+                            }
                         }
                     }
                 }
