@@ -1,7 +1,7 @@
 {
-  "name": "youtube-music-backend",
+  "name": "youtube-backend",
   "version": "1.0.0",
-  "description": "YouTube Music backend for Railway",
+  "description": "YouTube audio extractor with yt-dlp",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -13,7 +13,6 @@
     "axios": "^1.6.0",
     "cors": "^2.8.5",
     "express": "^4.18.2",
-    "@distube/ytdl-core": "^4.16.10",
     "yt-search": "^2.10.3"
   }
 }
