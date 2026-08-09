@@ -3,15 +3,15 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>TeleMusic · Zaycev (парсинг)</title>
+    <title>TeleMusic · YouTube (Invidious)</title>
     <style>
-        /* ===== Стили ===== */
+        /* ===== Стили (те же, что и в предыдущих версиях, для краткости я их сократил) ===== */
         * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body { font-family: system-ui, sans-serif; background: #0b0b0f; color: #eee; height: 100vh; overflow: hidden; display: flex; justify-content: center; align-items: center; }
         .app { max-width: 420px; width: 100%; height: 100vh; max-height: 820px; background: #12121a; border-radius: 28px; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,0.8); overflow: hidden; }
         .header { display: flex; justify-content: space-between; align-items: center; padding: 18px 22px 10px 22px; flex-shrink: 0; }
         .logo { display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 700; color: #fff; }
-        .logo-icon { font-size: 26px; color: #4caf50; }
+        .logo-icon { font-size: 26px; color: #ff0000; }
         .profile-btn { width: 40px; height: 40px; border-radius: 50%; background: #21212b; border: none; color: #ccc; font-size: 20px; cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center; }
         .profile-btn:active { transform: scale(0.92); background: #2f2f3d; }
         .content { flex: 1; overflow-y: auto; padding: 0 20px 10px 20px; }
@@ -19,23 +19,23 @@
         .page.active { display: block; }
         @keyframes fade { 0% { opacity: 0.4; transform: translateY(6px); } 100% { opacity: 1; transform: translateY(0); } }
         .welcome { margin: 8px 0 18px 0; }
-        .welcome h1 { font-size: 26px; font-weight: 700; background: linear-gradient(135deg, #81c784, #4caf50); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .welcome h1 { font-size: 26px; font-weight: 700; background: linear-gradient(135deg, #ff4d4d, #ff0000); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
         .welcome p { color: #8888a0; font-size: 14px; margin-top: 2px; }
         .search-box { background: #1e1e2a; border-radius: 16px; padding: 8px 16px; display: flex; align-items: center; gap: 12px; margin-bottom: 16px; border: 1px solid #2a2a3a; transition: 0.2s; }
-        .search-box:focus-within { border-color: #4caf50; box-shadow: 0 0 0 3px rgba(76,175,80,0.15); }
+        .search-box:focus-within { border-color: #ff0000; box-shadow: 0 0 0 3px rgba(255,0,0,0.15); }
         .search-box span { font-size: 18px; opacity: 0.5; }
         .search-box input { background: transparent; border: none; outline: none; color: #eee; font-size: 15px; width: 100%; padding: 8px 0; }
         .search-box input::placeholder { color: #55556a; }
         .content h2 { font-size: 18px; font-weight: 600; margin-bottom: 14px; color: #ddd; display: flex; justify-content: space-between; align-items: center; }
         .content h2 small { font-weight: 400; font-size: 13px; color: #8888a0; }
         .loader { text-align: center; padding: 30px 0; color: #8888a0; font-size: 14px; }
-        .loader .spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid #2a2a3a; border-top: 3px solid #4caf50; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 8px; }
+        .loader .spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid #2a2a3a; border-top: 3px solid #ff0000; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 8px; }
         @keyframes spin { to { transform: rotate(360deg); } }
         .track-list { display: flex; flex-direction: column; gap: 8px; padding-bottom: 16px; }
         .track-item { display: flex; align-items: center; gap: 14px; background: #181822; padding: 10px 14px; border-radius: 14px; cursor: pointer; transition: 0.15s; border: 1px solid transparent; }
         .track-item:active { transform: scale(0.97); background: #20202e; }
-        .track-item.active-track { border-color: #4caf50; background: #1f2b1f; }
-        .track-cover { width: 48px; height: 48px; border-radius: 10px; background: #2a2a3a; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 22px; color: #4caf50; overflow: hidden; }
+        .track-item.active-track { border-color: #ff0000; background: #2a1a1a; }
+        .track-cover { width: 48px; height: 48px; border-radius: 10px; background: #2a2a3a; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 22px; color: #ff0000; overflow: hidden; }
         .track-cover img { width: 100%; height: 100%; border-radius: 10px; object-fit: cover; }
         .track-info { flex: 1; min-width: 0; }
         .track-info .title { font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -64,18 +64,18 @@
         .player-heart.liked { color: #ff5e7a; }
         .progress-container { width: 100%; padding: 4px 0; }
         .progress-container input[type="range"] { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; border-radius: 4px; background: #2e2e40; outline: none; transition: 0.1s; }
-        .progress-container input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #4caf50; cursor: pointer; box-shadow: 0 0 8px rgba(76,175,80,0.4); }
-        .progress-container input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #4caf50; cursor: pointer; border: none; }
+        .progress-container input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #ff0000; cursor: pointer; box-shadow: 0 0 8px rgba(255,0,0,0.4); }
+        .progress-container input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #ff0000; cursor: pointer; border: none; }
         .player-controls { display: flex; justify-content: center; align-items: center; gap: 24px; }
         .player-controls button { background: none; border: none; color: #ccc; font-size: 22px; cursor: pointer; padding: 6px 10px; transition: 0.12s; border-radius: 30px; line-height: 1; display: flex; align-items: center; justify-content: center; }
         .player-controls button:active { transform: scale(0.88); background: #2a2a3a; }
-        .player-controls .play-button { width: 56px; height: 56px; border-radius: 50%; background: #4caf50; color: #fff; font-size: 26px; box-shadow: 0 4px 20px rgba(76,175,80,0.35); }
-        .player-controls .play-button:active { transform: scale(0.92); background: #388e3c; }
+        .player-controls .play-button { width: 56px; height: 56px; border-radius: 50%; background: #ff0000; color: #fff; font-size: 26px; box-shadow: 0 4px 20px rgba(255,0,0,0.35); }
+        .player-controls .play-button:active { transform: scale(0.92); background: #cc0000; }
         .navigation { display: flex; flex-shrink: 0; background: #12121a; border-top: 1px solid #1e1e2a; padding: 6px 0 10px 0; justify-content: space-around; }
         .nav-item { background: none; border: none; color: #55556a; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 22px; cursor: pointer; padding: 6px 20px; transition: 0.15s; border-radius: 20px; line-height: 1; }
         .nav-item small { font-size: 11px; font-weight: 500; letter-spacing: 0.3px; opacity: 0.7; }
-        .nav-item.active { color: #4caf50; }
-        .nav-item.active small { color: #4caf50; opacity: 1; }
+        .nav-item.active { color: #ff0000; }
+        .nav-item.active small { color: #ff0000; opacity: 1; }
         .nav-item:active { transform: scale(0.92); }
         @media (max-width: 440px) { .app { border-radius: 0; max-height: 100vh; height: 100vh; } .header { padding: 14px 16px 8px 16px; } .content { padding: 0 14px 6px 14px; } .player { padding: 10px 14px 12px 14px; } }
         @media (min-height: 800px) { .app { max-height: 860px; } }
@@ -85,13 +85,13 @@
 
 <div class="app">
     <header class="header">
-        <div class="logo"><span class="logo-icon">🎵</span><span>TeleMusic</span></div>
+        <div class="logo"><span class="logo-icon">▶</span><span>TeleMusic</span></div>
         <button class="profile-btn">👤</button>
     </header>
 
     <main class="content">
         <section id="homePage" class="page active">
-            <div class="welcome"><h1>Слушай с Zaycev</h1><p>Парсинг data-url (через прокси)</p></div>
+            <div class="welcome"><h1>Слушай с YouTube</h1><p>Через Invidious (без ключа)</p></div>
             <div class="search-box"><span>🔍</span><input id="searchInput" type="text" placeholder="Исполнитель или трек..." /></div>
             <h2 id="sectionTitle">Результаты <small id="resultCount"></small></h2>
             <div id="trackList" class="track-list">
@@ -132,22 +132,33 @@
 
 <script>
     // ================================================================
-    //  ПАРСИНГ DATA-URL ЧЕРЕЗ ПРОКСИ allorigins.win
+    //  INVIDIOUS API (публичный, без ключа)
     // ================================================================
 
-    const PROXY = 'https://api.allorigins.win/raw?url=';
-    const BASE_URL = 'https://zaycev.net';
+    // Список публичных инстансов Invidious (будем перебирать при ошибках)
+    const INSTANCES = [
+        'https://invidious.snopyta.org',
+        'https://inv.riverside.rocks',
+        'https://invidious.private.coffee',
+        'https://invidious.kavin.rocks',
+        'https://yewtu.be',
+    ];
+
+    let currentInstanceIndex = 0;
+
+    function getApiUrl(endpoint) {
+        return INSTANCES[currentInstanceIndex] + endpoint;
+    }
 
     // Состояние
-    let currentTracks = []; // массив { id, title, artist, cover, mp3 }
+    let currentTracks = [];
     let currentTrackIndex = 0;
     let isPlaying = false;
     let duration = 0;
     let favorites = new Set();
 
-    // Загрузка избранного
     try {
-        const saved = JSON.parse(localStorage.getItem('teleMusicFavoritesZaycevParse') || '[]');
+        const saved = JSON.parse(localStorage.getItem('teleMusicFavoritesInvidious') || '[]');
         if (Array.isArray(saved)) saved.forEach(id => favorites.add(id));
     } catch (_) {}
 
@@ -178,75 +189,65 @@
     let audio = new Audio();
 
     // ================================================================
-    //  ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+    //  ЗАПРОСЫ К INVIDIOUS
     // ================================================================
 
-    // Запрос через прокси
-    async function fetchViaProxy(url) {
-        const proxyUrl = PROXY + encodeURIComponent(url);
-        const res = await fetch(proxyUrl);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.text(); // возвращаем как текст (HTML или JSON)
+    async function fetchWithFallback(url) {
+        for (let i = 0; i < INSTANCES.length; i++) {
+            try {
+                const instance = INSTANCES[(currentInstanceIndex + i) % INSTANCES.length];
+                const fullUrl = instance + url;
+                const res = await fetch(fullUrl);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                return await res.json();
+            } catch (err) {
+                console.warn(`Попытка ${i+1} к ${INSTANCES[(currentInstanceIndex + i) % INSTANCES.length]} не удалась:`, err);
+                // Переключаем на следующий инстанс
+                currentInstanceIndex = (currentInstanceIndex + 1) % INSTANCES.length;
+            }
+        }
+        throw new Error('Все инстансы Invidious недоступны');
     }
 
-    // Парсинг HTML поисковой страницы
-    function parseSearchPage(html) {
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-
-        // Ищем контейнер с треками
-        const container = doc.querySelector('.musicset-track-list__items');
-        if (!container) return [];
-
-        const items = container.children;
-        const results = [];
-
-        for (const el of items) {
-            // Проверяем наличие data-url
-            const dataUrl = el.getAttribute('data-url');
-            if (!dataUrl) continue;
-
-            // Извлекаем название и исполнителя
-            const titleEl = el.querySelector('.musicset-track__title');
-            const artistEl = el.querySelector('.musicset-track__artist');
-            const title = titleEl?.textContent?.trim() || 'Без названия';
-            const artist = artistEl?.textContent?.trim() || 'Неизвестен';
-
-            // Пытаемся найти обложку (опционально)
-            const imgEl = el.querySelector('.musicset-track__cover img');
-            const cover = imgEl?.getAttribute('src') || '';
-
-            results.push({
-                dataUrl,
-                title,
-                artist,
-                cover,
-            });
-        }
-        return results;
+    // Поиск видео
+    async function searchInvidious(query) {
+        const encoded = encodeURIComponent(query);
+        const url = `/api/v1/search?q=${encoded}&type=video&fields=videoId,title,author,authorId,authorUrl,authorThumbnails,lengthSeconds,viewCount,thumbnails,description`;
+        const data = await fetchWithFallback(url);
+        return data;
     }
 
-    // Получение MP3 из data-url (запрос JSON)
-    async function getMp3FromDataUrl(dataUrl) {
-        // dataUrl уже содержит путь, например /track/12345/
-        const fullUrl = BASE_URL + dataUrl;
-        const jsonText = await fetchViaProxy(fullUrl);
-        try {
-            const json = JSON.parse(jsonText);
-            return json.url || null;
-        } catch (e) {
-            console.warn('Ошибка парсинга JSON для', dataUrl, e);
-            return null;
+    // Получение информации о видео (для аудио-потока)
+    async function getVideoInfo(videoId) {
+        const url = `/api/v1/videos/${videoId}?fields=title,author,authorId,authorUrl,authorThumbnails,lengthSeconds,viewCount,description,thumbnailUrl,adaptiveFormats,formatStreams`;
+        const data = await fetchWithFallback(url);
+        return data;
+    }
+
+    // Извлечение ссылки на аудио из adaptiveFormats
+    function extractAudioUrl(videoInfo) {
+        // Ищем аудио-поток с наилучшим качеством
+        const formats = videoInfo.adaptiveFormats || [];
+        // Сортируем по битрейту (если есть) и выбираем аудио
+        const audioFormats = formats.filter(f => f.type && f.type.startsWith('audio/'));
+        if (audioFormats.length === 0) {
+            // Иногда аудио может быть в formatStreams (если видео без адаптивных)
+            const streams = videoInfo.formatStreams || [];
+            const audioStreams = streams.filter(s => s.type && s.type.startsWith('audio/'));
+            if (audioStreams.length === 0) return null;
+            return audioStreams[0].url;
         }
+        // Выбираем с наибольшим битрейтом
+        audioFormats.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+        return audioFormats[0].url;
     }
 
     // ================================================================
     //  ОСНОВНЫЕ ФУНКЦИИ
     // ================================================================
 
-    async function searchZaycev(query) {
+    async function searchYouTube(query) {
         if (!query.trim()) {
-            // Пустой запрос — показываем подсказку
             trackListEl.innerHTML = `
                 <div class="loader"><div style="font-size:40px;margin-bottom:10px;">🎵</div><div>Введите исполнителя или трек</div></div>
             `;
@@ -256,44 +257,58 @@
         }
 
         try {
-            // 1. Получаем HTML страницы поиска
-            const searchUrl = `${BASE_URL}/search.html?query_search=${encodeURIComponent(query)}`;
-            const html = await fetchViaProxy(searchUrl);
+            trackListEl.innerHTML = `<div class="loader"><div class="spinner"></div><div>Поиск...</div></div>`;
+            const results = await searchInvidious(query);
 
-            // 2. Парсим data-url
-            const items = parseSearchPage(html);
-            if (items.length === 0) {
+            if (!results || results.length === 0) {
                 trackListEl.innerHTML = `<div class="empty"><p>Ничего не найдено</p></div>`;
                 currentTracks = [];
                 updateStats(0);
                 return;
             }
 
-            // 3. Для каждого элемента получаем MP3
-            trackListEl.innerHTML = `<div class="loader"><div class="spinner"></div><div>Загрузка MP3...</div></div>`;
+            // Преобразуем результаты в единый массив
             const tracks = [];
-            for (const item of items) {
-                const mp3 = await getMp3FromDataUrl(item.dataUrl);
-                if (mp3) {
-                    tracks.push({
-                        id: item.dataUrl, // используем dataUrl как уникальный ID
-                        title: item.title,
-                        artist: item.artist,
-                        cover: item.cover,
-                        mp3: mp3,
-                    });
+            for (const item of results) {
+                tracks.push({
+                    id: item.videoId,
+                    title: item.title,
+                    artist: item.author,
+                    cover: item.thumbnails && item.thumbnails.length > 0 ? item.thumbnails[item.thumbnails.length-1].url : '',
+                    duration: item.lengthSeconds,
+                });
+            }
+
+            // Теперь для каждого трека получаем аудио-ссылку (делаем параллельно)
+            trackListEl.innerHTML = `<div class="loader"><div class="spinner"></div><div>Загрузка аудио...</div></div>`;
+            const tracksWithAudio = [];
+            for (const track of tracks) {
+                try {
+                    const info = await getVideoInfo(track.id);
+                    const audioUrl = extractAudioUrl(info);
+                    if (audioUrl) {
+                        tracksWithAudio.push({
+                            ...track,
+                            mp3: audioUrl,
+                        });
+                    } else {
+                        // Если аудио нет, пропускаем
+                        console.warn('Нет аудио для', track.title);
+                    }
+                } catch (e) {
+                    console.warn('Ошибка получения аудио для', track.title, e);
                 }
             }
 
-            currentTracks = tracks;
+            currentTracks = tracksWithAudio;
             renderTracks();
-            updateStats(tracks.length);
+            updateStats(tracksWithAudio.length);
         } catch (err) {
             console.error(err);
             trackListEl.innerHTML = `
                 <div class="empty">
                     <p style="color:#ff6b6b;">❌ Ошибка: ${err.message}</p>
-                    <p style="font-size:13px; color:#888;">Прокси может быть перегружен. Попробуйте позже.</p>
+                    <p style="font-size:13px; color:#888;">Попробуйте позже или используйте встроенный плейлист.</p>
                 </div>
             `;
             currentTracks = [];
@@ -320,7 +335,7 @@
             return `
                 <div class="track-item ${isActive ? 'active-track' : ''}" data-index="${idx}">
                     <div class="track-cover">
-                        <img src="${track.cover || 'https://via.placeholder.com/48/2a2a3a/4caf50?text=Z'}" alt="${track.title}" loading="lazy" />
+                        <img src="${track.cover || 'https://via.placeholder.com/48/2a2a3a/ff0000?text=YT'}" alt="${track.title}" loading="lazy" />
                     </div>
                     <div class="track-info">
                         <div class="title">${track.title}</div>
@@ -334,7 +349,6 @@
             `;
         }).join('');
 
-        // Обработчики
         trackListEl.querySelectorAll('[data-action="play"]').forEach(btn => {
             btn.addEventListener('click', (e) => { e.stopPropagation(); playTrack(+btn.dataset.index); });
         });
@@ -361,7 +375,7 @@
             return `
                 <div class="track-item ${isActive ? 'active-track' : ''}" data-index="${idx}">
                     <div class="track-cover">
-                        <img src="${track.cover || 'https://via.placeholder.com/48/2a2a3a/4caf50?text=Z'}" alt="${track.title}" loading="lazy" />
+                        <img src="${track.cover || 'https://via.placeholder.com/48/2a2a3a/ff0000?text=YT'}" alt="${track.title}" loading="lazy" />
                     </div>
                     <div class="track-info">
                         <div class="title">${track.title}</div>
@@ -394,7 +408,7 @@
         if (index < 0 || index >= currentTracks.length) return;
         currentTrackIndex = index;
         const track = currentTracks[index];
-        playerCover.src = track.cover || 'https://via.placeholder.com/44/2a2a3a/4caf50?text=Z';
+        playerCover.src = track.cover || 'https://via.placeholder.com/44/2a2a3a/ff0000?text=YT';
         playerTitle.textContent = track.title;
         playerArtist.textContent = track.artist;
         const liked = favorites.has(track.id);
@@ -410,7 +424,7 @@
                 .then(() => { isPlaying = true; playBtn.textContent = '⏸'; playerEl.classList.remove('hidden'); })
                 .catch(() => { isPlaying = false; playBtn.textContent = '▶'; playerEl.classList.remove('hidden'); });
         } else {
-            alert('MP3 недоступен');
+            alert('Аудио недоступно');
             return;
         }
         renderTracks();
@@ -444,7 +458,7 @@
     function toggleFavorite(id) {
         if (favorites.has(id)) favorites.delete(id);
         else favorites.add(id);
-        localStorage.setItem('teleMusicFavoritesZaycevParse', JSON.stringify([...favorites]));
+        localStorage.setItem('teleMusicFavoritesInvidious', JSON.stringify([...favorites]));
         const cur = currentTracks[currentTrackIndex];
         if (cur && cur.id === id) {
             const liked = favorites.has(id);
@@ -483,7 +497,7 @@
     let searchTimeout;
     searchInput.addEventListener('input', (e) => {
         clearTimeout(searchTimeout);
-        searchTimeout = setTimeout(() => searchZaycev(e.target.value), 500);
+        searchTimeout = setTimeout(() => searchYouTube(e.target.value), 500);
     });
 
     navItems.forEach(item => {
@@ -503,12 +517,12 @@
     //  СТАРТ
     // ================================================================
 
-    // Показываем приветствие
     trackListEl.innerHTML = `
         <div class="loader"><div style="font-size:40px;margin-bottom:10px;">🎵</div><div>Введите исполнителя или трек</div></div>
     `;
     renderFavorites();
-    console.log('🎵 TeleMusic (парсинг Zaycev) готов!');
+    console.log('🎵 TeleMusic + Invidious готов!');
+    console.log('Используются инстансы:', INSTANCES);
 </script>
 
 </body>
