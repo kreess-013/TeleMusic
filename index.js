@@ -8,32 +8,30 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// Список прокси-сервисов (порядок = приоритет)
+// Список прокси (будем пробовать по очереди)
 const PROXIES = [
     'https://cors.lol/?url=',
-    'https://proxy.corsfix.com/?url=',
     'https://corsproxy.io/?url=',
     'https://api.codetabs.com/v1/proxy/?url=',
-    'https://cors.x2u.in/?url=',
 ];
 
-// Функция для выполнения запроса через прокси с fallback
-async function fetchWithProxy(url, maxRetries = PROXIES.length) {
-    for (let i = 0; i < maxRetries; i++) {
-        const proxy = PROXIES[i % PROXIES.length];
-        const proxyUrl = proxy + encodeURIComponent(url);
-        console.log(`📡 Попытка ${i+1} через ${proxy.split('//')[1].split('/')[0]}`);
+async function fetchWithProxy(url) {
+    for (const proxy of PROXIES) {
         try {
+            const proxyUrl = proxy + encodeURIComponent(url);
+            console.log(`📡 Попытка через ${proxy}`);
             const response = await axios.get(proxyUrl, {
-                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                },
                 timeout: 15000,
             });
-            if (response.status === 200 && response.data && response.data.length > 100) {
-                console.log(`✅ Успех через ${proxy.split('//')[1].split('/')[0]}`);
-                return response;
+            if (response.status === 200 && response.data) {
+                console.log(`✅ Успех через ${proxy}`);
+                return response.data;
             }
-        } catch (err) {
-            console.warn(`⚠️ Прокси ${proxy.split('//')[1].split('/')[0]} не сработал: ${err.message}`);
+        } catch (e) {
+            console.warn(`⚠️ Ошибка ${proxy}:`, e.message);
         }
     }
     throw new Error('Все прокси недоступны');
@@ -47,38 +45,71 @@ app.get('/search', async (req, res) => {
 
     try {
         const targetUrl = `https://zaycev.net/search.html?query_search=${encodeURIComponent(query)}`;
-        const response = await fetchWithProxy(targetUrl);
-        const html = response.data;
+        const html = await fetchWithProxy(targetUrl);
 
-        const $ = cheerio.load(html);
+        // Логируем первые 500 символов для диагностики
+        console.log('📄 Первые 500 символов ответа:');
+        console.log(html.slice(0, 500));
 
-        // Проверка на капчу
+        // Проверяем на капчу
         if (html.includes('captcha') || html.includes('Доступ к сайту ограничен')) {
-            console.warn('⚠️ Zaycev вернул капчу');
+            console.log('❌ Обнаружена капча');
             return res.status(403).json({ error: 'Captcha detected' });
         }
 
-        // Поиск треков с несколькими селекторами
-        let trackItems = $('.musicset-track-list__items .musicset-track');
-        if (trackItems.length === 0) trackItems = $('.musicset-track');
-        if (trackItems.length === 0) trackItems = $('.track-item');
-        if (trackItems.length === 0) trackItems = $('.musicset-track-list__items > div');
+        const $ = cheerio.load(html);
 
-        console.log(`📀 Найдено элементов: ${trackItems.length}`);
+        // Ищем все элементы с data-url
+        const trackElements = $('[data-url]');
+        console.log(`📀 Найдено элементов с data-url: ${trackElements.length}`);
 
-        if (trackItems.length === 0) {
+        if (trackElements.length === 0) {
+            // Если data-url нет, возможно, это JSON-ответ
+            try {
+                const json = JSON.parse(html);
+                if (json && json.tracks) {
+                    // Zaycev иногда отдаёт JSON
+                    const tracks = json.tracks.map(t => ({
+                        id: t.id || t.url,
+                        title: t.title || 'Без названия',
+                        artist: t.artist || 'Неизвестен',
+                        cover: t.cover || '',
+                        mp3: t.url || '',
+                    }));
+                    return res.json({ tracks });
+                }
+            } catch (_) {}
             return res.status(404).json({ error: 'No tracks found' });
         }
 
-        // Сбор данных о треках
         const tracks = [];
-        trackItems.each((index, element) => {
+        trackElements.each((index, element) => {
             const dataUrl = $(element).attr('data-url');
             if (!dataUrl) return;
 
-            const title = $(element).find('.musicset-track__title').text().trim();
-            const artist = $(element).find('.musicset-track__artist').text().trim();
-            const cover = $(element).find('.musicset-track__cover img').attr('src') || '';
+            // Пытаемся найти название и исполнителя
+            let title = $(element).find('.musicset-track__title').text().trim();
+            let artist = $(element).find('.musicset-track__artist').text().trim();
+            let cover = $(element).find('.musicset-track__cover img').attr('src') || '';
+
+            // Если не нашли по классам, пробуем взять текст из элемента
+            if (!title) {
+                const text = $(element).text().trim();
+                // Пробуем разделить на исполнителя и название (часто через " - ")
+                const parts = text.split(' - ');
+                if (parts.length >= 2) {
+                    artist = parts[0].trim();
+                    title = parts.slice(1).join(' - ').trim();
+                } else {
+                    title = text;
+                }
+            }
+
+            // Если обложка не найдена, ищем любую картинку внутри
+            if (!cover) {
+                const img = $(element).find('img').attr('src');
+                if (img) cover = img;
+            }
 
             tracks.push({
                 id: dataUrl,
@@ -91,36 +122,38 @@ app.get('/search', async (req, res) => {
 
         console.log(`📀 Собрано ${tracks.length} треков, загружаем MP3...`);
 
-        // Параллельная загрузка MP3 (не более 3 одновременных)
-        const batchSize = 3;
+        // Получаем MP3 через тот же прокси
         const tracksWithMp3 = [];
+        for (const track of tracks) {
+            try {
+                const jsonUrl = `https://zaycev.net${track.dataUrl}`;
+                const jsonData = await fetchWithProxy(jsonUrl);
+                let mp3Url = null;
 
-        for (let i = 0; i < tracks.length; i += batchSize) {
-            const batch = tracks.slice(i, i + batchSize);
-            const promises = batch.map(async (track) => {
                 try {
-                    const jsonUrl = `https://zaycev.net${track.dataUrl}`;
-                    const jsonResponse = await fetchWithProxy(jsonUrl);
-                    const jsonData = jsonResponse.data;
-                    const mp3Url = jsonData.url;
-                    if (mp3Url) {
-                        return {
-                            id: track.id,
-                            title: track.title,
-                            artist: track.artist,
-                            cover: track.cover,
-                            mp3: mp3Url,
-                        };
+                    const parsed = JSON.parse(jsonData);
+                    mp3Url = parsed.url;
+                } catch (_) {
+                    // Если не JSON, возможно, это прямой MP3
+                    if (jsonData.startsWith('http')) {
+                        mp3Url = jsonData.trim();
                     }
-                } catch (e) {
-                    console.warn(`⚠️ Ошибка MP3 для ${track.title}:`, e.message);
                 }
-                return null;
-            });
-            const results = await Promise.all(promises);
-            results.forEach(result => {
-                if (result) tracksWithMp3.push(result);
-            });
+
+                if (mp3Url) {
+                    tracksWithMp3.push({
+                        id: track.id,
+                        title: track.title,
+                        artist: track.artist,
+                        cover: track.cover,
+                        mp3: mp3Url,
+                    });
+                } else {
+                    console.warn(`⚠️ Нет mp3 для ${track.title}`);
+                }
+            } catch (e) {
+                console.warn(`⚠️ Ошибка MP3 для ${track.title}:`, e.message);
+            }
         }
 
         console.log(`✅ Готово: ${tracksWithMp3.length} треков с MP3`);
