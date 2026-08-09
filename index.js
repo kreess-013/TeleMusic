@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const ytdl = require('@distube/ytdl-core');
+const ytdl = require('@zorner/ytdl-core');
 const ytSearch = require('yt-search');
 const app = express();
 const PORT = process.env.PORT || 3000;
