@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+    <title>TeleMusic</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+<div class="app">
+
+    <!-- HEADER -->
+    <header class="header">
+        <div class="logo">
+            <span class="logo-icon">♪</span>
+            <span>TeleMusic</span>
+        </div>
+
+        <button class="profile-btn">👤</button>
+    </header>
+
+
+    <!-- MAIN -->
+    <main class="content">
+
+        <!-- HOME -->
+        <section id="homePage" class="page active">
+
+            <div class="welcome">
+                <h1>Слушай музыку</h1>
+                <p>Твоя музыка всегда с тобой</p>
+            </div>
+
+            <div class="search-box">
+                <span>🔍</span>
+                <input
+                    id="searchInput"
+                    type="text"
+                    placeholder="Найти исполнителя или трек..."
+                >
+            </div>
+
+            <h2>Популярное</h2>
+
+            <div id="trackList" class="track-list"></div>
+
+        </section>
+
+
+        <!-- FAVORITES -->
+        <section id="favoritesPage" class="page">
+
+            <div class="page-title">
+                <h1>Избранное</h1>
+                <span id="favoritesCount">0 треков</span>
+            </div>
+
+            <div id="favoritesList" class="track-list"></div>
+
+            <div id="emptyFavorites" class="empty">
+                <div class="empty-icon">♡</div>
+                <h2>Здесь пока пусто</h2>
+                <p>Добавляй понравившиеся треки в избранное</p>
+            </div>
+
+        </section>
+
+    </main>
+
+
+    <!-- PLAYER -->
+    <div id="player" class="player hidden">
+
+        <div class="player-track">
+
+            <img id="playerCover"
+                 src=""
+                 alt="">
+
+            <div class="player-info">
+                <strong id="playerTitle">Название</strong>
+                <span id="playerArtist">Исполнитель</span>
+            </div>
+
+            <button id="playerFavorite"
+                    class="player-heart">
+                ♡
+            </button>
+
+        </div>
+
+        <div class="progress-container">
+
+            <input
+                id="progress"
+                type="range"
+                min="0"
+                max="100"
+                value="0"
+            >
+
+        </div>
+
+        <div class="player-controls">
+
+            <button id="prevBtn">⏮</button>
+
+            <button id="playBtn" class="play-button">
+                ▶
+            </button>
+
+            <button id="nextBtn">⏭</button>
+
+        </div>
+
+    </div>
+
+
+    <!-- NAVIGATION -->
+    <nav class="navigation">
+
+        <button class="nav-item active"
+                data-page="homePage">
+
+            <span>⌂</span>
+            <small>Главная</small>
+
+        </button>
+
+        <button class="nav-item"
+                data-page="favoritesPage">
+
+            <span>♡</span>
+            <small>Избранное</small>
+
+        </button>
+
+    </nav>
+
+</div>
+
+<script src="app.js"></script>
+
+</body>
+</html>
