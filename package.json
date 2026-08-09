@@ -3,11 +3,11 @@
   "version": "1.0.0",
   "description": "Backend for YouTube Music player",
   "main": "index.js",
-  "engines": {
-    "node": ">=18.0.0"
-  },
   "scripts": {
     "start": "node index.js"
+  },
+  "engines": {
+    "node": "20.x"
   },
   "dependencies": {
     "cors": "^2.8.5",
