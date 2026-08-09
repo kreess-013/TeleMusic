@@ -2,44 +2,14 @@ const express = require('express');
 const cors = require('cors');
 const ytdl = require('ytdl-core');
 const ytSearch = require('yt-search');
-const path = require('path');
-
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
 
-// Раздаём статику (фронтенд)
-app.use(express.static(path.join(__dirname, 'public')));
-
-// Поиск треков
-app.get('/api/search', async (req, res) => {
-    const query = req.query.query;
-    if (!query) {
-        return res.status(400).json({ error: 'Missing query parameter' });
-    }
-    try {
-        const result = await ytSearch(query);
-        // Берём только видео (не каналы, плейлисты)
-        const videos = result.videos.slice(0, 20).map(v => ({
-            id: v.videoId,
-            title: v.title,
-            artist: v.author.name,
-            cover: v.thumbnail,
-            duration: v.duration.seconds,
-            // ссылка на видео для получения аудио позже
-            url: v.url,
-        }));
-        res.json({ tracks: videos });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Search failed' });
-    }
-});
-
-// Получение аудио-ссылки по URL видео
-app.get('/api/audio', async (req, res) => {
+// Эндпоинт для получения информации о треке по URL
+app.get('/info', async (req, res) => {
     const { url } = req.query;
     if (!url) {
         return res.status(400).json({ error: 'Missing url parameter' });
@@ -60,9 +30,32 @@ app.get('/api/audio', async (req, res) => {
     }
 });
 
-// По умолчанию отдаём index.html
-app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+// Эндпоинт для поиска
+app.get('/search', async (req, res) => {
+    const { query } = req.query;
+    if (!query) {
+        return res.status(400).json({ error: 'Missing query parameter' });
+    }
+    try {
+        const result = await ytSearch(query);
+        const videos = result.videos.slice(0, 10).map(v => ({
+            id: v.videoId,
+            title: v.title,
+            author: v.author.name,
+            thumbnail: v.thumbnail,
+            duration: v.duration.seconds,
+            url: v.url,
+        }));
+        res.json({ tracks: videos });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Search failed' });
+    }
+});
+
+// Простой эндпоинт для проверки
+app.get('/', (req, res) => {
+    res.send('YouTube Music Backend is running');
 });
 
 app.listen(PORT, () => {
