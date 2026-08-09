@@ -1,79 +1,109 @@
 const express = require('express');
 const cors = require('cors');
-const { exec } = require('child_process');
-const ytSearch = require('yt-search');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
 
+// Список публичных инстансов Invidious (без ключа)
+const INSTANCES = [
+    'https://inv.nadeko.net',
+    'https://invidious.nerdvpn.de',
+    'https://yt.chocolatemoo53.com',
+    'https://invidious.tiekoetter.com',
+    'https://invidious.f5.si',
+    'https://inv.zoomerville.com'
+];
+
+// Функция запроса с перебором инстансов
+async function fetchFromInvidious(endpoint) {
+    for (const base of INSTANCES) {
+        const url = base + endpoint;
+        try {
+            const res = await fetch(url);
+            if (!res.ok) {
+                console.warn(`Instance ${base} returned ${res.status}`);
+                continue;
+            }
+            const data = await res.json();
+            // Проверка на капчу
+            if (data.error && data.error.includes('captcha')) {
+                console.warn(`Instance ${base} requires captcha`);
+                continue;
+            }
+            return data;
+        } catch (e) {
+            console.warn(`Instance ${base} failed:`, e.message);
+        }
+    }
+    throw new Error('All Invidious instances are unavailable');
+}
+
 // Поиск
 app.get('/search', async (req, res) => {
     const { query } = req.query;
     if (!query) return res.status(400).json({ error: 'Missing query' });
     try {
-        const result = await ytSearch(query);
-        const tracks = result.videos.slice(0, 15).map(v => ({
+        const endpoint = `/api/v1/search?q=${encodeURIComponent(query)}&type=video&fields=videoId,title,author,thumbnails,lengthSeconds`;
+        const data = await fetchFromInvidious(endpoint);
+        const items = data.items || [];
+        const tracks = items.map(v => ({
             id: v.videoId,
             title: v.title,
-            artist: v.author.name,
-            cover: v.thumbnail,
-            duration: v.duration.seconds,
+            artist: v.author,
+            cover: v.thumbnails?.pop()?.url || '',
+            duration: v.lengthSeconds,
         }));
         res.json({ tracks });
     } catch (e) {
         console.error(e);
-        res.status(500).json({ error: 'Search failed' });
+        res.status(500).json({ error: 'Search failed: ' + e.message });
     }
 });
 
-// Получение аудио через yt-dlp
-app.get('/info', (req, res) => {
+// Получение аудио
+app.get('/info', async (req, res) => {
     const { url } = req.query;
     if (!url) return res.status(400).json({ error: 'Missing url' });
-
-    // Команда для получения прямой ссылки на аудио (лучшее качество)
-    const command = `yt-dlp -f bestaudio --get-url ${url}`;
-
-    exec(command, (error, stdout, stderr) => {
-        if (error) {
-            console.error('yt-dlp error:', error);
-            return res.status(500).json({ error: 'Failed to get audio' });
+    // Извлекаем ID
+    const videoId = url.match(/(?:v=|\/)([a-zA-Z0-9_-]{11})/)?.[1];
+    if (!videoId) return res.status(400).json({ error: 'Invalid YouTube URL' });
+    try {
+        const endpoint = `/api/v1/videos/${videoId}?fields=title,author,thumbnailUrl,adaptiveFormats,formatStreams`;
+        const data = await fetchFromInvidious(endpoint);
+        // Ищем аудио
+        let audioUrl = null;
+        const formats = data.adaptiveFormats || [];
+        const audioFormats = formats.filter(f => f.type && f.type.startsWith('audio/'));
+        if (audioFormats.length > 0) {
+            audioFormats.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+            audioUrl = audioFormats[0].url;
         }
-        const audioUrl = stdout.trim();
         if (!audioUrl) {
-            return res.status(404).json({ error: 'No audio URL found' });
+            // Попробуем formatStreams
+            const streams = data.formatStreams || [];
+            const audioStreams = streams.filter(s => s.type && s.type.startsWith('audio/'));
+            if (audioStreams.length > 0) {
+                audioStreams.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+                audioUrl = audioStreams[0].url;
+            }
         }
-
-        // Также можно получить метаданные через yt-dlp -j
-        // Но для простоты сначала получаем ссылку, а потом можем получить информацию отдельно
-        // Запрашиваем метаданные в том же вызове? Лучше сделать два вызова, но можно и один, используя -j
-        // Упростим: сначала получаем ссылку, а для метаданных используем yt-search (уже есть)
-        // Но у нас нет названия и артиста — можно получить через yt-search по ID
-        // Либо сразу извлечь через yt-dlp --print title и т.д.
-        // Оптимально — сделать один вызов с выводом JSON
-        const infoCommand = `yt-dlp -j ${url}`;
-        exec(infoCommand, (err, stdoutInfo) => {
-            if (err) {
-                // Если не удалось получить инфу, отдаём только ссылку
-                return res.json({ audioUrl });
-            }
-            try {
-                const info = JSON.parse(stdoutInfo);
-                res.json({
-                    id: info.id,
-                    title: info.title,
-                    artist: info.uploader,
-                    thumbnail: info.thumbnail,
-                    audioUrl: audioUrl,
-                    duration: info.duration,
-                });
-            } catch (parseErr) {
-                res.json({ audioUrl });
-            }
+        if (!audioUrl) {
+            return res.status(404).json({ error: 'No audio found' });
+        }
+        res.json({
+            id: videoId,
+            title: data.title,
+            artist: data.author,
+            thumbnail: data.thumbnailUrl,
+            audioUrl: audioUrl,
+            duration: data.lengthSeconds || 0,
         });
-    });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: 'Info failed: ' + e.message });
+    }
 });
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
