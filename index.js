@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const ytdl = require('ytdl-core');
+const ytdl = require('@distube/ytdl-core');
 const ytSearch = require('yt-search');
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -37,16 +37,21 @@ app.get('/info', async (req, res) => {
         return res.status(400).json({ error: 'Missing url parameter' });
     }
     try {
-        const info = await ytdl.getInfo(url);
-        // Перебираем форматы, выбираем аудио с наивысшим битрейтом
+        // Используем @distube/ytdl-core, он обновляется быстрее
+        const info = await ytdl.getInfo(url, {
+            requestOptions: {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                },
+            },
+        });
         const audioFormats = ytdl.filterFormats(info.formats, 'audioonly');
         if (audioFormats.length === 0) {
             return res.status(404).json({ error: 'No audio formats found' });
         }
-        // Сортируем по битрейту (убывание)
+        // Сортируем по битрейту
         audioFormats.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
         const bestAudio = audioFormats[0];
-        // Проверяем, что ссылка есть
         if (!bestAudio.url) {
             return res.status(404).json({ error: 'Audio URL not available' });
         }
@@ -60,13 +65,20 @@ app.get('/info', async (req, res) => {
         });
     } catch (err) {
         console.error('Info error:', err);
-        // Если ошибка 410, пробуем альтернативный подход: использовать ytdl с опциями
+        // Пробуем получить аудио через поток (это может сработать, если сигнатура не расшифрована)
         try {
-            // Попробуем скачать через поток (это даст новую ссылку)
+            // Запрашиваем поток, чтобы получить ссылку
             const stream = ytdl(url, { filter: 'audioonly' });
-            // Но нам нужна ссылка, а не поток. Поэтому получаем информацию заново с принудительным обновлением
-            // Повторный запрос с новыми опциями
-            const info2 = await ytdl.getInfo(url, { requestOptions: { headers: { 'User-Agent': 'Mozilla/5.0' } } });
+            // Но нам нужна ссылка, а не поток. Поэтому используем другой подход: получаем информацию с принудительным обновлением
+            const info2 = await ytdl.getInfo(url, {
+                requestOptions: {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    },
+                },
+                // Включить обновление сигнатуры
+                // Для @distube/ytdl-core это по умолчанию
+            });
             const audioFormats2 = ytdl.filterFormats(info2.formats, 'audioonly');
             if (audioFormats2.length === 0) {
                 return res.status(404).json({ error: 'No audio formats found after retry' });
