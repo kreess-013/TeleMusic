@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>TeleMusic · YouTube (Invidious)</title>
+    <title>TeleMusic · YouTube (бэкенд)</title>
     <style>
-        /* ===== Стили (те же, что и в предыдущих версиях, для краткости я их сократил) ===== */
-        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        /* Стили как в предыдущих версиях (я сокращаю, но можно взять полные из ранее данных) */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: system-ui, sans-serif; background: #0b0b0f; color: #eee; height: 100vh; overflow: hidden; display: flex; justify-content: center; align-items: center; }
         .app { max-width: 420px; width: 100%; height: 100vh; max-height: 820px; background: #12121a; border-radius: 28px; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,0.8); overflow: hidden; }
         .header { display: flex; justify-content: space-between; align-items: center; padding: 18px 22px 10px 22px; flex-shrink: 0; }
@@ -91,7 +91,7 @@
 
     <main class="content">
         <section id="homePage" class="page active">
-            <div class="welcome"><h1>Слушай с YouTube</h1><p>Через Invidious (без ключа)</p></div>
+            <div class="welcome"><h1>Слушай с YouTube</h1><p>Через бэкенд на Railway</p></div>
             <div class="search-box"><span>🔍</span><input id="searchInput" type="text" placeholder="Исполнитель или трек..." /></div>
             <h2 id="sectionTitle">Результаты <small id="resultCount"></small></h2>
             <div id="trackList" class="track-list">
@@ -132,33 +132,33 @@
 
 <script>
     // ================================================================
-    //  INVIDIOUS API (публичный, без ключа)
+    //  НАСТРОЙКА: ВАШ URL НА RAILWAY
     // ================================================================
+    const BACKEND_URL = 'telemusic-production.up.railway.app'; // ← замените на свой!
 
-    // Список публичных инстансов Invidious (будем перебирать при ошибках)
-    const INSTANCES = [
-        'https://invidious.snopyta.org',
-        'https://inv.riverside.rocks',
-        'https://invidious.private.coffee',
-        'https://invidious.kavin.rocks',
-        'https://yewtu.be',
+    // ================================================================
+    //  ВСТРОЕННЫЙ FALLBACK-ПЛЕЙЛИСТ (если бэкенд недоступен)
+    // ================================================================
+    const FALLBACK_TRACKS = [
+        { id: 1, title: 'Blinding Lights', artist: 'The Weeknd', cover: 'https://picsum.photos/seed/bl/200/200', src: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3' },
+        { id: 2, title: 'Levitating', artist: 'Dua Lipa', cover: 'https://picsum.photos/seed/lev/200/200', src: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3' },
+        { id: 3, title: 'Save Your Tears', artist: 'The Weeknd', cover: 'https://picsum.photos/seed/syt/200/200', src: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3' },
+        { id: 4, title: 'Peaches', artist: 'Justin Bieber', cover: 'https://picsum.photos/seed/pea/200/200', src: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3' },
+        { id: 5, title: 'Montero', artist: 'Lil Nas X', cover: 'https://picsum.photos/seed/mon/200/200', src: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3' },
     ];
 
-    let currentInstanceIndex = 0;
-
-    function getApiUrl(endpoint) {
-        return INSTANCES[currentInstanceIndex] + endpoint;
-    }
-
-    // Состояние
-    let currentTracks = [];
+    // ================================================================
+    //  СОСТОЯНИЕ
+    // ================================================================
+    let currentTracks = []; // массив { id, title, artist, cover, mp3?, videoId? }
     let currentTrackIndex = 0;
     let isPlaying = false;
     let duration = 0;
     let favorites = new Set();
+    let useBackend = true; // если бэкенд не отвечает, переключаемся на fallback
 
     try {
-        const saved = JSON.parse(localStorage.getItem('teleMusicFavoritesInvidious') || '[]');
+        const saved = JSON.parse(localStorage.getItem('teleMusicFavoritesBackend') || '[]');
         if (Array.isArray(saved)) saved.forEach(id => favorites.add(id));
     } catch (_) {}
 
@@ -189,63 +189,28 @@
     let audio = new Audio();
 
     // ================================================================
-    //  ЗАПРОСЫ К INVIDIOUS
+    //  ЗАПРОСЫ К БЭКЕНДУ
     // ================================================================
-
-    async function fetchWithFallback(url) {
-        for (let i = 0; i < INSTANCES.length; i++) {
-            try {
-                const instance = INSTANCES[(currentInstanceIndex + i) % INSTANCES.length];
-                const fullUrl = instance + url;
-                const res = await fetch(fullUrl);
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                return await res.json();
-            } catch (err) {
-                console.warn(`Попытка ${i+1} к ${INSTANCES[(currentInstanceIndex + i) % INSTANCES.length]} не удалась:`, err);
-                // Переключаем на следующий инстанс
-                currentInstanceIndex = (currentInstanceIndex + 1) % INSTANCES.length;
-            }
-        }
-        throw new Error('Все инстансы Invidious недоступны');
+    async function searchBackend(query) {
+        const url = `${BACKEND_URL}/search?query=${encodeURIComponent(query)}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        return data.results; // массив { id, title, author, thumbnail, duration }
     }
 
-    // Поиск видео
-    async function searchInvidious(query) {
-        const encoded = encodeURIComponent(query);
-        const url = `/api/v1/search?q=${encoded}&type=video&fields=videoId,title,author,authorId,authorUrl,authorThumbnails,lengthSeconds,viewCount,thumbnails,description`;
-        const data = await fetchWithFallback(url);
+    async function getAudioInfo(videoId) {
+        const url = `${BACKEND_URL}/info?url=https://www.youtube.com/watch?v=${videoId}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        // data: { title, author, thumbnail, audioUrl, duration }
         return data;
-    }
-
-    // Получение информации о видео (для аудио-потока)
-    async function getVideoInfo(videoId) {
-        const url = `/api/v1/videos/${videoId}?fields=title,author,authorId,authorUrl,authorThumbnails,lengthSeconds,viewCount,description,thumbnailUrl,adaptiveFormats,formatStreams`;
-        const data = await fetchWithFallback(url);
-        return data;
-    }
-
-    // Извлечение ссылки на аудио из adaptiveFormats
-    function extractAudioUrl(videoInfo) {
-        // Ищем аудио-поток с наилучшим качеством
-        const formats = videoInfo.adaptiveFormats || [];
-        // Сортируем по битрейту (если есть) и выбираем аудио
-        const audioFormats = formats.filter(f => f.type && f.type.startsWith('audio/'));
-        if (audioFormats.length === 0) {
-            // Иногда аудио может быть в formatStreams (если видео без адаптивных)
-            const streams = videoInfo.formatStreams || [];
-            const audioStreams = streams.filter(s => s.type && s.type.startsWith('audio/'));
-            if (audioStreams.length === 0) return null;
-            return audioStreams[0].url;
-        }
-        // Выбираем с наибольшим битрейтом
-        audioFormats.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
-        return audioFormats[0].url;
     }
 
     // ================================================================
     //  ОСНОВНЫЕ ФУНКЦИИ
     // ================================================================
-
     async function searchYouTube(query) {
         if (!query.trim()) {
             trackListEl.innerHTML = `
@@ -256,64 +221,67 @@
             return;
         }
 
+        if (!useBackend) {
+            // Используем fallback
+            useFallbackSearch(query);
+            return;
+        }
+
         try {
             trackListEl.innerHTML = `<div class="loader"><div class="spinner"></div><div>Поиск...</div></div>`;
-            const results = await searchInvidious(query);
-
+            const results = await searchBackend(query);
             if (!results || results.length === 0) {
                 trackListEl.innerHTML = `<div class="empty"><p>Ничего не найдено</p></div>`;
                 currentTracks = [];
                 updateStats(0);
                 return;
             }
-
-            // Преобразуем результаты в единый массив
-            const tracks = [];
-            for (const item of results) {
-                tracks.push({
-                    id: item.videoId,
-                    title: item.title,
-                    artist: item.author,
-                    cover: item.thumbnails && item.thumbnails.length > 0 ? item.thumbnails[item.thumbnails.length-1].url : '',
-                    duration: item.lengthSeconds,
-                });
-            }
-
-            // Теперь для каждого трека получаем аудио-ссылку (делаем параллельно)
-            trackListEl.innerHTML = `<div class="loader"><div class="spinner"></div><div>Загрузка аудио...</div></div>`;
-            const tracksWithAudio = [];
-            for (const track of tracks) {
-                try {
-                    const info = await getVideoInfo(track.id);
-                    const audioUrl = extractAudioUrl(info);
-                    if (audioUrl) {
-                        tracksWithAudio.push({
-                            ...track,
-                            mp3: audioUrl,
-                        });
-                    } else {
-                        // Если аудио нет, пропускаем
-                        console.warn('Нет аудио для', track.title);
-                    }
-                } catch (e) {
-                    console.warn('Ошибка получения аудио для', track.title, e);
-                }
-            }
-
-            currentTracks = tracksWithAudio;
+            // Сохраняем как треки с videoId
+            currentTracks = results.map(v => ({
+                id: v.id,
+                title: v.title,
+                artist: v.author,
+                cover: v.thumbnail,
+                videoId: v.id,
+                mp3: null, // будет подгружено при воспроизведении
+                duration: v.duration,
+            }));
             renderTracks();
-            updateStats(tracksWithAudio.length);
+            updateStats(currentTracks.length);
         } catch (err) {
-            console.error(err);
+            console.error('Ошибка бэкенда:', err);
+            // Переключаемся на fallback
+            useBackend = false;
             trackListEl.innerHTML = `
                 <div class="empty">
-                    <p style="color:#ff6b6b;">❌ Ошибка: ${err.message}</p>
-                    <p style="font-size:13px; color:#888;">Попробуйте позже или используйте встроенный плейлист.</p>
+                    <p style="color:#ff6b6b;">❌ Бэкенд недоступен, переключаем на встроенный плейлист.</p>
                 </div>
             `;
+            useFallbackSearch(query);
+        }
+    }
+
+    function useFallbackSearch(query) {
+        const filtered = FALLBACK_TRACKS.filter(t =>
+            t.title.toLowerCase().includes(query.toLowerCase()) ||
+            t.artist.toLowerCase().includes(query.toLowerCase())
+        );
+        if (filtered.length === 0) {
+            trackListEl.innerHTML = `<div class="empty"><p>Ничего не найдено в офлайн-плейлисте</p></div>`;
             currentTracks = [];
             updateStats(0);
+            return;
         }
+        currentTracks = filtered.map(t => ({
+            id: t.id,
+            title: t.title,
+            artist: t.artist,
+            cover: t.cover,
+            mp3: t.src,
+            videoId: null,
+        }));
+        renderTracks();
+        updateStats(currentTracks.length);
     }
 
     function updateStats(count) {
@@ -323,7 +291,6 @@
     // ================================================================
     //  РЕНДЕРИНГ
     // ================================================================
-
     function renderTracks() {
         if (!currentTracks.length) {
             trackListEl.innerHTML = `<div class="empty"><p style="color:#666;">Нет треков</p></div>`;
@@ -403,11 +370,27 @@
     // ================================================================
     //  ПЛЕЕР
     // ================================================================
-
-    function playTrack(index) {
+    async function playTrack(index) {
         if (index < 0 || index >= currentTracks.length) return;
-        currentTrackIndex = index;
         const track = currentTracks[index];
+        // Если трек из бэкенда и ещё не имеет mp3, запрашиваем
+        if (track.videoId && !track.mp3) {
+            try {
+                trackListEl.innerHTML = `<div class="loader"><div class="spinner"></div><div>Загрузка аудио...</div></div>`;
+                const info = await getAudioInfo(track.videoId);
+                track.mp3 = info.audioUrl;
+                // обновляем обложку и название, если они изменились
+                track.cover = info.thumbnail || track.cover;
+                track.title = info.title || track.title;
+                track.artist = info.author || track.artist;
+            } catch (err) {
+                console.error('Ошибка получения аудио:', err);
+                alert('Не удалось загрузить аудио для этого трека');
+                return;
+            }
+        }
+
+        currentTrackIndex = index;
         playerCover.src = track.cover || 'https://via.placeholder.com/44/2a2a3a/ff0000?text=YT';
         playerTitle.textContent = track.title;
         playerArtist.textContent = track.artist;
@@ -458,7 +441,7 @@
     function toggleFavorite(id) {
         if (favorites.has(id)) favorites.delete(id);
         else favorites.add(id);
-        localStorage.setItem('teleMusicFavoritesInvidious', JSON.stringify([...favorites]));
+        localStorage.setItem('teleMusicFavoritesBackend', JSON.stringify([...favorites]));
         const cur = currentTracks[currentTrackIndex];
         if (cur && cur.id === id) {
             const liked = favorites.has(id);
@@ -472,7 +455,6 @@
     // ================================================================
     //  АУДИО СОБЫТИЯ
     // ================================================================
-
     audio.addEventListener('loadedmetadata', () => { duration = audio.duration; });
     audio.addEventListener('timeupdate', () => {
         if (duration > 0) progressInput.value = (audio.currentTime / duration) * 100;
@@ -482,7 +464,6 @@
     // ================================================================
     //  UI СОБЫТИЯ
     // ================================================================
-
     playBtn.addEventListener('click', togglePlay);
     nextBtn.addEventListener('click', nextTrack);
     prevBtn.addEventListener('click', prevTrack);
@@ -516,13 +497,15 @@
     // ================================================================
     //  СТАРТ
     // ================================================================
-
     trackListEl.innerHTML = `
         <div class="loader"><div style="font-size:40px;margin-bottom:10px;">🎵</div><div>Введите исполнителя или трек</div></div>
     `;
     renderFavorites();
-    console.log('🎵 TeleMusic + Invidious готов!');
-    console.log('Используются инстансы:', INSTANCES);
+    console.log('🎵 TeleMusic с бэкендом на Railway!');
+    console.log(`Бэкенд URL: ${BACKEND_URL}`);
+    if (!useBackend) {
+        console.warn('Бэкенд недоступен, используется fallback');
+    }
 </script>
 
 </body>
